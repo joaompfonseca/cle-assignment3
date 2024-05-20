@@ -16,6 +16,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "common.h"
 #include "const.h"
 #include "sortUtils.h"
 
@@ -52,6 +53,22 @@ static double get_delta_time(void) {
     return (double)(t1.tv_sec - t0.tv_sec) + 1.0e-9 * (double)(t1.tv_nsec - t0.tv_nsec);
 }
 
+
+
+/**
+ *  \brief CUDA kernel to perform bitonic sort by rows.
+ *
+ *  \param d_arr device array to be sorted
+ *  \param size size of the array
+ *  \param k number of bits to be sorted
+ *
+ *  \return EXIT_SUCCESS if the array is sorted, EXIT_FAILURE otherwise
+ */
+__global__ void bitonic_sort_gpu(int *d_arr, int size, int k, int direction) {
+
+}
+
+
 /**
  *  \brief Main function of the program.
  *
@@ -64,21 +81,39 @@ static double get_delta_time(void) {
  *  \return EXIT_SUCCESS if the array is sorted, EXIT_FAILURE otherwise
  */
 int main(int argc, char *argv[]) {
+
+    // set up device
+    int dev = 0;
+    cudaDeviceProp deviceProp;
+
+    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
+    printf("Using Device %d: %s\n", dev, deviceProp.name);
+    CHECK(cudaSetDevice(dev));  // a gpu que vou utilizar
+
     // program arguments
     char *cmd_name = argv[0];
     char *file_path = NULL;
 
     int direction = DESCENDING;
-    int *arr = NULL, size;
+    int *h_arr = NULL, size;
+    int k = 0;
 
     // process program arguments
     int opt;
     do {
-        switch ((opt = getopt(argc, argv, "f:h"))) {
+        switch ((opt = getopt(argc, argv, "k:f:h"))) {
             case 'f':
                 file_path = optarg;
                 if (file_path == NULL) {
                     fprintf(stderr, "Invalid file name\n");
+                    printUsage(cmd_name);
+                    return EXIT_FAILURE;
+                }
+                break;
+            case 'k':
+                k = atoi(optarg);
+                if (k < 0) {
+                    fprintf(stderr, "Invalid k value\n");
                     printUsage(cmd_name);
                     return EXIT_FAILURE;
                 }
@@ -121,8 +156,8 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stdout, "%-16s : %d\n", "Array size", size);
     // allocate memory for the array
-    arr = (int *)malloc(size * sizeof(int));
-    if (arr == NULL) {
+    h_arr = (int *)malloc(size * sizeof(int));
+    if (h_arr == NULL) {
         fprintf(stderr, "Could not allocate memory for the array\n");
         fclose(file);
         return EXIT_FAILURE;
@@ -130,108 +165,67 @@ int main(int argc, char *argv[]) {
     // load array into memory
     int num, ni = 0;
     while (fread(&num, sizeof(int), 1, file) == 1 && ni < size) {
-        arr[ni++] = num;
+        h_arr[ni++] = num;
     }
     // close the file
     fclose(file);
 
-    // START TIME
+    // reserve memory for gpu
+    int *d_arr;
+    CHECK(cudaMalloc((void **)&d_arr, size * sizeof(int)));
+
+    // copy array to gpu
     get_delta_time();
+    CHECK(cudaMemcpy(d_arr, h_arr, size * sizeof(int), cudaMemcpyHostToDevice));
+    printf("The transfer of %ld bytes from the host to the device took %.3e seconds\n",
+           size * sizeof(int), get_delta_time());
 
-    //if (size > 1) {
-    //    int count = size / mpi_size;
-    //
-    //    // allocate memory for the sub-array
-    //    int *sub_arr = (int *)malloc(count * sizeof(int));
-    //    if (sub_arr == NULL) {
-    //        fprintf(stderr, "[PROC-%d] Could not allocate memory for the sub-array\n", mpi_rank);
-    //        if (mpi_rank == 0) free(arr);
-    //        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    //    }
-    //
-    //    /* divide the array into mpi_size parts
-    //       make each process bitonic sort one part */
-    //
-    //    // scatter the array into mpi_size parts
-    //    MPI_Scatter(arr, count, MPI_INT, sub_arr, count, MPI_INT, 0, curr_comm);
-    //
-    //    // direction of the sub-sort
-    //    int sub_direction = (mpi_rank % 2 == 0) == direction;
-    //
-    //    // make each process bitonic sort one part
-    //    bitonic_sort(sub_arr, 0, count, sub_direction);
-    //
-    //    // gather the sorted parts
-    //    MPI_Gather(sub_arr, count, MPI_INT, arr, count, MPI_INT, 0, curr_comm);
-    //
-    //    /* perform a bitonic merge of the sorted parts
-    //       make each process bitonic merge one part */
-    //
-    //    for (count *= 2; count <= size; count *= 2) {
-    //        int n_merge_tasks = size / count;
-    //
-    //        // reallocate memory for the sub-array
-    //        sub_arr = (int *)realloc(sub_arr, count * sizeof(int));
-    //        if (sub_arr == NULL) {
-    //            fprintf(stderr, "[PROC-%d] Could not reallocate memory for the sub-array\n", mpi_rank);
-    //            free(sub_arr);
-    //            if (mpi_rank == 0) free(arr);
-    //            MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    //        }
-    //
-    //        // group processes involved in merge tasks
-    //        MPI_Group_incl(curr_group, n_merge_tasks, group_members, &next_group);
-    //        MPI_Comm_create(curr_comm, next_group, &next_comm);
-    //        curr_group = next_group;
-    //        curr_comm = next_comm;
-    //
-    //        // terminate processes not involved
-    //        if (mpi_rank >= n_merge_tasks) {
-    //            break;
-    //        }
-    //
-    //        // set communicator size
-    //        MPI_Comm_size(curr_comm, &n_merge_tasks);
-    //
-    //        if (n_merge_tasks > 1) {
-    //            // scatter the array into n_merge_tasks parts
-    //            MPI_Scatter(arr, count, MPI_INT, sub_arr, count, MPI_INT, 0, curr_comm);
-    //
-    //            // direction of the sub-merge
-    //            int sub_direction = (mpi_rank % 2 == 0) == direction;
-    //
-    //            // make each worker process bitonic merge one part
-    //            bitonic_merge(sub_arr, 0, count, sub_direction);
-    //
-    //            // gather the merged parts
-    //            MPI_Gather(sub_arr, count, MPI_INT, arr, count, MPI_INT, 0, curr_comm);
-    //        }
-    //        else {
-    //            // direction of the sub-merge
-    //            int sub_direction = (mpi_rank % 2 == 0) == direction;
-    //
-    //            // make each worker process bitonic merge one part
-    //            bitonic_merge(arr, 0, count, sub_direction);
-    //        }
-    //    }
-    //
-    //    free(sub_arr);
-    //}
+    // run the computational kernel
+    unsigned int gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ;
 
-    // END TIME
-    fprintf(stdout, "%-16s : %.9f seconds\n", "Time elapsed", get_delta_time());
+    blockDimX = 1024;
+    blockDimY = 1024;
+    blockDimZ = 1;
+    gridDimX = 1;
+    gridDimY = 1;
+    gridDimZ = 1;
+
+    dim3 grid(gridDimX, gridDimY, gridDimZ);
+    dim3 block(blockDimX, blockDimY, blockDimZ);
+
+    if ((gridDimX * gridDimY * gridDimZ * blockDimX * blockDimY * blockDimZ) != size) {
+        fprintf(stderr, "Wrong configuration!\n");
+        return EXIT_FAILURE;
+    }
+
+    get_delta_time();
+    bitonic_sort_gpu<<<grid, block>>>(d_arr, size, k, direction);
+    CHECK(cudaDeviceSynchronize());
+    CHECK(cudaGetLastError());
+    printf("The CUDA kernel <<<(%d,%d,%d), (%d,%d,%d)>>> took %.3e seconds to run\n",
+           gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, get_delta_time());
+
+    // copy kernel result back to host side
+    CHECK(cudaMemcpy(h_arr, d_arr, size * sizeof(int), cudaMemcpyDeviceToHost));
+    printf("The transfer of %ld bytes from the device to the host took %.3e seconds\n",
+           size * sizeof(int), get_delta_time());
+
+    // free memory
+    CHECK(cudaFree(d_arr));
+
+    // reset device
+    CHECK(cudaDeviceReset());
 
     // check if the array is sorted
     for (int i = 0; i < size - 1; i++) {
-        if ((arr[i] < arr[i + 1] && direction == DESCENDING) || (arr[i] > arr[i + 1] && direction == ASCENDING)) {
-            fprintf(stderr, "Error in position %d between element %d and %d\n", i, arr[i], arr[i + 1]);
-            free(arr);
+        if ((h_arr[i] < h_arr[i + 1] && direction == DESCENDING) || (h_arr[i] > h_arr[i + 1] && direction == ASCENDING)) {
+            fprintf(stderr, "Error in position %d between element %d and %d\n", i, h_arr[i], h_arr[i + 1]);
+            free(h_arr);
             return EXIT_FAILURE;
         }
     }
-    fprintf(stdout, "The array is sorted, everything is OK! :)\n");
 
-    free(arr);
+    fprintf(stdout, "The array is sorted, everything is OK! :)\n");
 
     return EXIT_SUCCESS;
 }
