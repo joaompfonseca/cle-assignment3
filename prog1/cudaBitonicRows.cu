@@ -88,6 +88,7 @@ int main(int argc, char *argv[]) {
 
     CHECK(cudaGetDeviceProperties(&deviceProp, dev));
     printf("Using Device %d: %s\n", dev, deviceProp.name);
+    printf("Max threads per block: %d\n", deviceProp.maxThreadsPerBlock);
     CHECK(cudaSetDevice(dev));  // a gpu que vou utilizar
 
     // program arguments
@@ -183,8 +184,8 @@ int main(int argc, char *argv[]) {
     // run the computational kernel
     unsigned int gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ;
 
-    blockDimX = 1024;
-    blockDimY = 1024;
+    blockDimX = 32;
+    blockDimY = 32;
     blockDimZ = 1;
     gridDimX = 1;
     gridDimY = 1;
@@ -193,10 +194,10 @@ int main(int argc, char *argv[]) {
     dim3 grid(gridDimX, gridDimY, gridDimZ);
     dim3 block(blockDimX, blockDimY, blockDimZ);
 
-    if ((gridDimX * gridDimY * gridDimZ * blockDimX * blockDimY * blockDimZ) != size) {
-        fprintf(stderr, "Wrong configuration!\n");
-        return EXIT_FAILURE;
-    }
+    // if ((gridDimX * gridDimY * gridDimZ * blockDimX * blockDimY * blockDimZ) != 1024) {
+    //     fprintf(stderr, "Wrong configuration!\n");
+    //     return EXIT_FAILURE;
+    // }
 
     get_delta_time();
     bitonic_sort_gpu<<<grid, block>>>(d_arr, size, k, direction);
