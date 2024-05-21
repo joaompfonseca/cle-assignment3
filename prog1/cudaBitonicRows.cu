@@ -10,6 +10,7 @@
  */
 
 #include <assert.h>
+#include <cuda_runtime.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,25 +59,56 @@ static double get_delta_time(void) {
 /**
  *  \brief CUDA kernel to perform bitonic sort by rows.
  *
- *  \param d_arr device array to be sorted
- *  \param size size of the array
- *  \param k number of bits to be sorted
- *
- *  \return EXIT_SUCCESS if the array is sorted, EXIT_FAILURE otherwise
+ *  \param d_arr array to be sorted
+ *  \param size number of elements in the array
+ *  \param global_direction sorting direction of the entire array, 0 for descending order, 1 for ascending order
+ *                          sorting direction of the subsequence is determined by idx and global_direction
+ *  \param k number of elements in each chunk
+ *  \param iter iteration of the algorithm
  */
-__global__ void bitonic_sort_gpu(int *d_arr, int size, int k, int direction) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+__global__ void bitonic_sort_gpu(int *d_arr, int size, int global_direction, int k, int iter) {
+    int x = threadIdx.x + blockDim.x * blockIdx.x;
+    int y = threadIdx.y + blockDim.y * blockIdx.y;
     int idx = blockDim.x * gridDim.x * y + x;
+    
+    int max_idx = size / (k << iter);
+    if (idx >= max_idx) return;
 
-    // bitonic sort by rows
-    // seq +K ∗(1 << iter)∗idx
-    // int *subseq = d_arr + k * (1 << y) * idx;
+    int low_index = k * (1 << iter) * idx;
+    int count = k * (1 << iter);
+    int direction = (idx % 2 == 0) == global_direction;
 
-    // printf("first num: %d\n", subseq[0]);
+    printf("[idx=%d] Sorting from index %d, %d elements in direction %d\n", idx, low_index, count, direction);
 
+    bitonic_sort(d_arr, low_index, count, direction);
 }
 
+/**
+ *  \brief CUDA kernel to perform bitonic merge by rows.
+ *
+ *  \param d_arr array to be merged
+ *  \param size number of elements in the array
+ *  \param global_direction merge direction of the entire array, 0 for descending order, 1 for ascending order
+ *                          merge direction of the subsequence is determined by idx and global_direction
+ *  \param k number of elements in each chunk
+ *  \param iter iteration of the algorithm
+ */
+ __global__ void bitonic_merge_gpu(int *d_arr, int size, int global_direction, int k, int iter) {
+    int x = threadIdx.x + blockDim.x * blockIdx.x;
+    int y = threadIdx.y + blockDim.y * blockIdx.y;
+    int idx = blockDim.x * gridDim.x * y + x;
+
+    int max_idx = size / (k << iter);
+    if (idx >= max_idx) return;
+
+    int low_index = k * (1 << iter) * idx;
+    int count = k * (1 << iter);
+    int direction = (idx % 2 == 0) == global_direction;
+
+    printf("[idx=%d] Merging from index %d, %d elements in direction %d\n", idx, low_index, count, direction);
+
+    bitonic_merge(d_arr, low_index, count, direction);
+}
 
 /**
  *  \brief Main function of the program.
@@ -98,7 +130,7 @@ int main(int argc, char *argv[]) {
     CHECK(cudaGetDeviceProperties(&deviceProp, dev));
     printf("Using Device %d: %s\n", dev, deviceProp.name);
     printf("Max threads per block: %d\n", deviceProp.maxThreadsPerBlock);
-    CHECK(cudaSetDevice(dev));  // a gpu que vou utilizar
+    CHECK(cudaSetDevice(dev));  // set gpu to use
 
     // program arguments
     char *cmd_name = argv[0];
@@ -106,12 +138,12 @@ int main(int argc, char *argv[]) {
 
     int direction = DESCENDING;
     int *h_arr = NULL, size;
-    int k = 0;
+    int k = -1;
 
     // process program arguments
     int opt;
     do {
-        switch ((opt = getopt(argc, argv, "k:f:h"))) {
+        switch ((opt = getopt(argc, argv, "f:k:h"))) {
             case 'f':
                 file_path = optarg;
                 if (file_path == NULL) {
@@ -141,6 +173,11 @@ int main(int argc, char *argv[]) {
     } while (opt != -1);
     if (file_path == NULL) {
         fprintf(stderr, "Input file not specified\n");
+        printUsage(cmd_name);
+        return EXIT_FAILURE;
+    }
+    if (k < 0) {
+        fprintf(stderr, "Value for k not specified\n");
         printUsage(cmd_name);
         return EXIT_FAILURE;
     }
@@ -203,21 +240,34 @@ int main(int argc, char *argv[]) {
     dim3 grid(gridDimX, gridDimY, gridDimZ);
     dim3 block(blockDimX, blockDimY, blockDimZ);
 
-    // if ((gridDimX * gridDimY * gridDimZ * blockDimX * blockDimY * blockDimZ) != 1024) {
-    //     fprintf(stderr, "Wrong configuration!\n");
-    //     return EXIT_FAILURE;
-    // }
+    if ((gridDimX * gridDimY * gridDimZ * blockDimX * blockDimY * blockDimZ) != 1024) {
+        fprintf(stderr, "Wrong configuration!\n");
+        return EXIT_FAILURE;
+    }
 
+    // START TIME
     get_delta_time();
-    bitonic_sort_gpu<<<grid, block>>>(d_arr, size, k, direction);
+
+    int iter = 0;
+    fprintf(stdout, "Iteration %d: Sort\n", iter);
+    bitonic_sort_gpu<<<grid, block>>>(d_arr, size, direction, k, iter);
     CHECK(cudaDeviceSynchronize());
     CHECK(cudaGetLastError());
-    printf("The CUDA kernel <<<(%d,%d,%d), (%d,%d,%d)>>> took %.3e seconds to run\n",
+    while ((1 << iter)*k <= size) {
+        iter++;
+        fprintf(stdout, "Iteration %d: Merge\n", iter);
+        bitonic_merge_gpu<<<grid, block>>>(d_arr, size, direction, k, iter);
+        CHECK(cudaDeviceSynchronize());
+        CHECK(cudaGetLastError());
+    }
+
+    // END TIME
+    fprintf(stdout, "The CUDA kernel <<<(%d,%d,%d), (%d,%d,%d)>>> took %.3e seconds to run\n",
            gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, get_delta_time());
 
     // copy kernel result back to host side
     CHECK(cudaMemcpy(h_arr, d_arr, size * sizeof(int), cudaMemcpyDeviceToHost));
-    printf("The transfer of %ld bytes from the device to the host took %.3e seconds\n",
+    fprintf(stdout, "The transfer of %ld bytes from the device to the host took %.3e seconds\n",
            size * sizeof(int), get_delta_time());
 
     // free memory
@@ -227,15 +277,15 @@ int main(int argc, char *argv[]) {
     CHECK(cudaDeviceReset());
 
     // check if the array is sorted
-    // for (int i = 0; i < size - 1; i++) {
-    //     if ((h_arr[i] < h_arr[i + 1] && direction == DESCENDING) || (h_arr[i] > h_arr[i + 1] && direction == ASCENDING)) {
-    //         fprintf(stderr, "Error in position %d between element %d and %d\n", i, h_arr[i], h_arr[i + 1]);
-    //         free(h_arr);
-    //         return EXIT_FAILURE;
-    //     }
-    // }
+    for (int i = 0; i < size - 1; i++) {
+        if ((h_arr[i] < h_arr[i + 1] && direction == DESCENDING) || (h_arr[i] > h_arr[i + 1] && direction == ASCENDING)) {
+            fprintf(stderr, "Error in position %d between element %d and %d\n", i, h_arr[i], h_arr[i + 1]);
+            free(h_arr);
+            return EXIT_FAILURE;
+        }
+    }
 
-    // fprintf(stdout, "The array is sorted, everything is OK! :)\n");
+    fprintf(stdout, "The array is sorted, everything is OK! :)\n");
 
     return EXIT_SUCCESS;
 }

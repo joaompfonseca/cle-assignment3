@@ -20,7 +20,7 @@
  *  \param count number of elements in the array
  *  \param direction 0 for descending order, 1 for ascending order
  */
-extern void bitonic_merge(int *arr, int low_index, int count, int direction);
+extern __device__ void bitonic_merge(int *arr, int low_index, int count, int direction);
 
 /**
  *  \brief Sorts an integer array in the desired order.
@@ -30,6 +30,6 @@ extern void bitonic_merge(int *arr, int low_index, int count, int direction);
  *  \param count number of elements in the array
  *  \param direction 0 for descending order, 1 for ascending order
  */
-extern void bitonic_sort(int *arr, int low_index, int count, int direction);
+extern __device__ void bitonic_sort(int *arr, int low_index, int count, int direction);
 
 #endif /* SORT_UTILS_H */

@@ -1,5 +1,5 @@
 /**
- *  \file sortUtils.c (implementation file)
+ *  \file sortUtils.cu (implementation file)
  *
  *  \brief Assignment 3.1: cuda-based bitonic sort by rows.
  *
@@ -19,7 +19,7 @@
  *  \param count number of elements in the array
  *  \param direction 0 for descending order, 1 for ascending order
  */
-void bitonic_merge(int *arr, int low_index, int count, int direction) {  // NOLINT(*-no-recursion)
+ __device__ void bitonic_merge(int *arr, int low_index, int count, int direction) {  // NOLINT(*-no-recursion)
     if (count <= 1) return;
     int half = count / 2;
     // move the numbers to the correct half
@@ -44,7 +44,7 @@ void bitonic_merge(int *arr, int low_index, int count, int direction) {  // NOLI
  *  \param count number of elements in the array
  *  \param direction 0 for descending order, 1 for ascending order
  */
-void bitonic_sort(int *arr, int low_index, int count, int direction) {  // NOLINT(*-no-recursion)
+ __device__ void bitonic_sort(int *arr, int low_index, int count, int direction) {  // NOLINT(*-no-recursion)
     if (count <= 1) return;
     int half = count / 2;
     // sort left half in ascending order
