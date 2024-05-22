@@ -12,6 +12,9 @@
 #ifndef CONST_H
 #define CONST_H
 
+/** \brief Default number of threads per block */
+#define N_THREADS 1024
+
 /** \brief Descending sort direction */
 #define DESCENDING 0
 
