@@ -2,7 +2,7 @@
 
 compile:
 	@echo "Compiling..."
-	nvcc -O2 -Wno-deprecated-gpu-targets -rdc=true -o prog1 cudaBitonicRows.cu sortUtils.cu 2>/dev/null
+	nvcc -O2 -Wno-deprecated-gpu-targets -o prog1 cudaBitonicRows.cu
 
 test: compile
 	@echo "Testing..."
