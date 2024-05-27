@@ -19,7 +19,6 @@
 
 #include "common.h"
 #include "const.h"
-#include "sortUtils.h"
 
 /**
  *  \brief Prints the usage of the program.
@@ -298,17 +297,6 @@ int main(int argc, char *argv[]) {
     CHECK(cudaDeviceReset());
 
     fprintf(stdout, "--- CHECKING IF ARRAY IS SORTED\n");
-
-    // first 10 elements
-    for (int i = 0; i < 10; i++) {
-        fprintf(stdout, "%d ", h_arr[i]);
-    }
-    fprintf(stdout, "\n");
-    // last 10 elements
-    for (int i = size - 10; i < size; i++) {
-        fprintf(stdout, "%d ", h_arr[i]);
-    }
-    fprintf(stdout, "\n");
 
     // check if the array is sorted
     for (int i = 0; i < size - 1; i++) {
