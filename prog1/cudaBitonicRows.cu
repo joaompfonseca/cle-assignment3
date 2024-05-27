@@ -245,10 +245,10 @@ int main(int argc, char *argv[]) {
 
     // print program configuration
     fprintf(stdout, "--- CONFIGURATION\n");
-    fprintf(stdout, "%-16s : %s\n", "Input file", file_path);
-    fprintf(stdout, "%-16s : %d\n", "Threads per block", k);
-    fprintf(stdout, "%-16s : %d\n", "Array size", size);
-    fprintf(stdout, "%-16s : %d - %s\n", "Using device", dev, deviceProp.name);
+    fprintf(stdout, "%-24s : %s\n", "Input file", file_path);
+    fprintf(stdout, "%-24s : %d\n", "Threads per block", k);
+    fprintf(stdout, "%-24s : %d\n", "Array size", size);
+    fprintf(stdout, "%-24s : %d - %s\n", "Using device", dev, deviceProp.name);
 
     fprintf(stdout, "--- MEASURING TIMES\n");
 
@@ -279,6 +279,8 @@ int main(int argc, char *argv[]) {
     get_delta_time();
 
     bitonic_sort_gpu<<<grid, block>>>(d_arr, size, direction, k);
+    CHECK(cudaDeviceSynchronize ());
+    CHECK(cudaGetLastError ());  
 
     // END TIME
     fprintf(stdout, "CUDA kernel <<<(%d,%d,%d), (%d,%d,%d)>>> executed : %.3e seconds\n",
