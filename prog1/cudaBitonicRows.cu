@@ -95,7 +95,23 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
         sub_size = size / (k >> iter);
         sub_direction = (idx % 2 == 0) == direction;
         
-        bitonic_merge(d_arr, sub_index, sub_size, sub_direction);
+        // for each sub merge size in the sub array
+        for (int merge_size = sub_size; merge_size >= 2; merge_size /= 2) {
+            int half = merge_size / 2;
+            // for all the sub merges needed in the sub array
+            for (int m = 0; m < sub_size; m += merge_size) {
+                int start_index = sub_index + m;
+                // move the numbers to the correct half
+                for (int i = start_index; i < start_index + half; i++) {
+                    if (sub_direction == (d_arr[i] > d_arr[i + half])) {
+                        int temp = d_arr[i];
+                        d_arr[i] = d_arr[i + half];
+                        d_arr[i + half] = temp;
+                    }
+                }
+            }
+        }
+
 
         __syncthreads(); // wait for all threads in the block to finish
     }
@@ -259,6 +275,17 @@ int main(int argc, char *argv[]) {
     CHECK(cudaDeviceReset());
 
     fprintf(stdout, "--- CHECKING IF ARRAY IS SORTED\n");
+
+    // first 10 elements
+    for (int i = 0; i < 10; i++) {
+        fprintf(stdout, "%d ", h_arr[i]);
+    }
+    fprintf(stdout, "\n");
+    // last 10 elements
+    for (int i = size - 10; i < size; i++) {
+        fprintf(stdout, "%d ", h_arr[i]);
+    }
+    fprintf(stdout, "\n");
 
     // check if the array is sorted
     for (int i = 0; i < size - 1; i++) {
