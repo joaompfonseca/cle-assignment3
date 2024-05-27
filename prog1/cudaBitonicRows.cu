@@ -91,7 +91,6 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
         // terminate threads no longer involved
         if (idx >= (k >> iter)) return;
 
-        sub_index = idx * (size / (k >> iter));
         sub_size = size / (k >> iter);
         sub_direction = (idx % 2 == 0) == direction;
         
@@ -100,13 +99,14 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
             int half = merge_size / 2;
             // for all the sub merges needed in the sub array
             for (int m = 0; m < sub_size; m += merge_size) {
-                int start_index = sub_index + m;
                 // move the numbers to the correct half
-                for (int i = start_index; i < start_index + half; i++) {
-                    if (sub_direction == (d_arr[i] > d_arr[i + half])) {
-                        int temp = d_arr[i];
-                        d_arr[i] = d_arr[i + half];
-                        d_arr[i + half] = temp;
+                for (int i = 0; i < half; i++) {
+                    int i1 = size / k * (1 << iter) * idx + i + m;
+                    int i2 = size / k * (1 << iter) * idx + i + m + half;
+                    if (sub_direction == (d_arr[i1] > d_arr[i2])) {
+                        int temp = d_arr[i1];
+                        d_arr[i1] = d_arr[i2];
+                        d_arr[i2] = temp;
                     }
                 }
             }
