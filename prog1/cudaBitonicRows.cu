@@ -73,11 +73,33 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
     /* divide the array into k parts
        make each thread bitonic sort one part */
 
-    int sub_index = idx * (size / k);
     int sub_size = size / k;
     int sub_direction = (idx % 2 == 0) == direction;
 
-    bitonic_sort(d_arr, sub_index, sub_size, sub_direction);
+    // for each sub sort size in the sub array
+    for (int sort_size = 2; sort_size <= sub_size; sort_size *= 2) {
+        // for all the sub sorts needed in the sub array
+        for (int s = 0; s < sub_size; s += sort_size) {
+            int sort_direction = ((s / sort_size) % 2 == 0) == sub_direction;
+            // for each sub merge size in the sub sort array
+            for (int merge_size = sort_size; merge_size >= 2; merge_size /= 2) {
+                int half = merge_size / 2;
+                // for all the sub merges needed in the sub sort array
+                for (int m = 0; m < sort_size; m += merge_size) {
+                    // move the numbers to the correct half
+                    for (int i = 0; i < half; i++) {
+                        int i1 = size / k * (1 << iter) * idx + i + s + m;
+                        int i2 = size / k * (1 << iter) * idx + i + s + m + half;
+                        if (sort_direction == (d_arr[i1] > d_arr[i2])) {
+                            int temp = d_arr[i1];
+                            d_arr[i1] = d_arr[i2];
+                            d_arr[i2] = temp;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     __syncthreads(); // wait for all threads in the block to finish
 
@@ -111,7 +133,6 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
                 }
             }
         }
-
 
         __syncthreads(); // wait for all threads in the block to finish
     }
