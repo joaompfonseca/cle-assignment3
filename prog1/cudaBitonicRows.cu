@@ -87,8 +87,8 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
                 for (int m = 0; m < sort_size; m += merge_size) {
                     // move the numbers to the correct half
                     for (int i = 0; i < half; i++) {
-                        int i1 = size / k * (1 << iter) * idx + i + s + m;
-                        int i2 = size / k * (1 << iter) * idx + i + s + m + half;
+                        int i1 = size / k * (1 << iter) * idx + (s + m + i);
+                        int i2 = size / k * (1 << iter) * idx + (s + m + i + half);
                         if (sort_direction == (d_arr[i1] > d_arr[i2])) {
                             int temp = d_arr[i1];
                             d_arr[i1] = d_arr[i2];
@@ -122,8 +122,8 @@ __global__ void bitonic_sort_gpu(int *d_arr, int size, int direction, int k) {
             for (int m = 0; m < sub_size; m += merge_size) {
                 // move the numbers to the correct half
                 for (int i = 0; i < half; i++) {
-                    int i1 = size / k * (1 << iter) * idx + i + m;
-                    int i2 = size / k * (1 << iter) * idx + i + m + half;
+                    int i1 = size / k * (1 << iter) * idx + (m + i);
+                    int i2 = size / k * (1 << iter) * idx + (m + i + half);
                     if (sub_direction == (d_arr[i1] > d_arr[i2])) {
                         int temp = d_arr[i1];
                         d_arr[i1] = d_arr[i2];
@@ -300,8 +300,10 @@ int main(int argc, char *argv[]) {
 
     // check if the array is sorted
     for (int i = 0; i < size - 1; i++) {
-        if ((h_arr[i] < h_arr[i + 1] && direction == DESCENDING) || (h_arr[i] > h_arr[i + 1] && direction == ASCENDING)) {
-            fprintf(stderr, "Error in position %d between element %d and %d\n", i, h_arr[i], h_arr[i + 1]);
+        int i1 = i;
+        int i2 = i + 1;
+        if ((h_arr[i1] < h_arr[i2] && direction == DESCENDING) || (h_arr[i1] > h_arr[i2] && direction == ASCENDING)) {
+            fprintf(stderr, "Error in position %d between element %d and %d\n", i, h_arr[i1], h_arr[i2]);
             free(h_arr);
             return EXIT_FAILURE;
         }
